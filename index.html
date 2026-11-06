@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>楽曲追加 告知画像メーカー</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f6f8;--fg:#1c1c22;--card:#fff;--bd:#d8d8e0;--ac:#e0457b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17171c;--fg:#ececf2;--card:#23232b;--bd:#3a3a46}}
+:root[data-theme="dark"]{--bg:#17171c;--fg:#ececf2;--card:#23232b;--bd:#3a3a46}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Noto Sans JP",system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:14px}
+h1{font-size:18px;margin:4px 0 12px}
+.box{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
+label{display:block;font-size:12px;opacity:.75;margin:8px 0 3px}
+input[type=text],select,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.chk{display:inline-flex;align-items:center;gap:5px;margin:8px 14px 0 0;font-size:13px;opacity:1}
+.chk input{width:auto}
+h2{font-size:14px;margin:0 0 4px;color:var(--ac)}
+canvas{width:100%;height:auto;border-radius:8px;border:1px solid var(--bd);display:block}
+.del{width:auto!important;margin:6px 0 0!important;padding:5px 12px!important;background:var(--bd)!important;color:var(--fg)!important;font-weight:500!important;font-size:12px}
+button{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:12px;font:inherit;font-weight:700;width:100%;margin-top:10px}
+#out img{width:100%;margin-top:10px;border-radius:8px}
+.hint{font-size:12px;opacity:.7}
+</style>
+</head>
+<body>
+<main>
+<h1>楽曲追加 告知画像メーカー</h1>
+
+<div class="box">
+<div class="row">
+<div style="flex:3"><label>見出し（{ } で囲むと大きい文字）</label><input type="text" id="head" value="7月2日 楽曲追加!"></div>
+<div style="flex:1"><label>数字を自動で大きく</label><label class="chk"><input type="checkbox" id="autonum" checked>ON</label></div>
+</div>
+<div class="row">
+<div><label>見出しの色</label><select id="hstyle"><option value="n">通常（黄）</option><option value="u">ULTIMA（ピンク）</option><option value="w">WORLD’S END（虹）</option></select></div>
+<div><label>曲数</label><select id="count"></select></div></div><div class="row"><div><label>背景</label><select id="bgstyle"><option value="n">通常（黄）</option><option value="u">ULTIMA（赤）</option><option value="w">WORLD’S END（虹）</option><option value="i">画像（アップロード）</option></select></div><div></div>
+</div>
+<div class="row">
+<div><label>背景画像（アップすると「画像」背景になります）</label><input type="file" id="bgimg" accept="image/*"><button class="del" type="button" id="bgimgDel">削除</button></div></div>
+<label>コピーライト（改行で最大3行）</label>
+<textarea id="copy" rows="3">©</textarea>
+<div>
+
+</div>
+
+
+</div>
+
+<div id="songs"></div>
+
+<div class="box">
+<canvas id="cv" width="1920" height="1080"></canvas>
+<button id="gen">画像を生成して保存</button>
+<div id="out"></div>
+</div>
+</main>
+
+<script>
+const W=1920,H=1080,MAX=10;
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+const F='"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif';
+const songs=Array.from({length:MAX},()=>({title:'',artist:'',img:null,ult:false,badge:'',we:false,wk:'光',wn:'1'}));
+let bgimg=null;
+
+// UI
+for(let i=1;i<=MAX;i++){const o=document.createElement('option');o.value=i;o.textContent=i+'曲';if(i==4)o.selected=true;$('count').appendChild(o)}
+songs.forEach((s,i)=>{
+ const d=document.createElement('div');d.className='box';d.id='s'+i;
+ d.innerHTML=`<h2>曲 ${i+1}</h2>
+ <label>ジャケット画像</label><input type="file" accept="image/*" data-k="img"><button class="del" type="button" data-del>削除</button>
+ <label>曲名（改行可・最大2行）</label><textarea rows="1" data-k="title"></textarea>
+ <label>アーティスト（改行可・最大2行）</label><textarea rows="1" data-k="artist"></textarea>
+ <label>バッジ</label><select data-k="badge"><option value="">なし</option><option value="task">課題曲</option><option value="rev">復活</option><option value="nat">全国</option></select>
+ <label class="chk"><input type="checkbox" data-k="ult">ULTIMA</label>
+ <label class="chk"><input type="checkbox" data-k="we">WORLD’S ENDレベル表示</label>
+ <div class="row"><div><label>属性（1文字）</label><input type="text" maxlength="1" value="光" data-k="wk"></div><div><label>星の数</label><select data-k="wn"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div></div>`;
+ d.querySelectorAll('[data-k]').forEach(el=>{
+  const k=el.dataset.k;
+  el.addEventListener(k=='img'?'change':'input',()=>{
+   if(k=='img')loadImg(el.files[0],im=>{s.img=im;draw()});
+   else if(el.type=='checkbox'){s[k]=el.checked;draw()}
+   else{s[k]=el.value;sched()}
+  });
+ });
+ d.querySelector('[data-del]').onclick=()=>{s.img=null;d.querySelector('[data-k=img]').value='';draw()};
+ $('songs').appendChild(d);
+});
+function loadImg(f,cb){if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>cb(im);im.src=r.result};r.readAsDataURL(f)}
+$('bgimg').onchange=e=>loadImg(e.target.files[0],im=>{bgimg=im;$('bgstyle').value='i';draw()});
+
+$('bgimgDel').onclick=()=>{bgimg=null;$('bgimg').value='';draw()};
+
+['head','copy'].forEach(id=>$(id).addEventListener('input',sched));$('autonum').onchange=draw;
+$('hstyle').onchange=draw;$('bgstyle').onchange=draw;
+$('count').onchange=()=>{vis();draw()};
+function vis(){const n=+$('count').value;songs.forEach((_,i)=>$('s'+i).style.display=i<n?'':'none')}
+vis();
+
+// text helpers
+function wrap(t,mw){const out=[];for(const p of t.split('\n')){let c='';for(const ch of p){if(c&&ctx.measureText(c+ch).width>mw){out.push(c);c=ch}else c+=ch}out.push(c)}return out}
+function fit(t,mw,maxL,size,min,wt){let s=size;for(;s>=min;s-=1){ctx.font=`${wt} ${s}px ${F}`;const l=wrap(t,mw);if(l.length<=maxL)return{l,s}}ctx.font=`${wt} ${min}px ${F}`;return{l:wrap(t,mw).slice(0,maxL),s:min}}
+function lines(t,cx,cy,mw,maxL,size,min,wt,col,k=1.2){
+ const {l,s}=fit(t,mw,maxL,size,min,wt);ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='middle';
+ const lh=s*k,y0=cy-lh*(l.length-1)/2;l.forEach((x,i)=>ctx.fillText(x,cx,y0+i*lh));
+}
+function stripes(x,y,w,h,col,gap){ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();ctx.strokeStyle=col;ctx.lineWidth=2;
+ for(let i=-h;i<w;i+=gap){ctx.beginPath();ctx.moveTo(x+i,y+h);ctx.lineTo(x+i+h,y);ctx.stroke()}ctx.restore()}
+
+// card
+function ribbon(jx,jy,js,s,t,c,fs){ctx.save();ctx.beginPath();ctx.rect(jx,jy,js,js);ctx.clip();const T=130*s;ctx.fillStyle=c;ctx.beginPath();ctx.moveTo(jx,jy);ctx.lineTo(jx+T,jy);ctx.lineTo(jx,jy+T);ctx.fill();ctx.translate(jx+T*.38,jy+T*.38);ctx.rotate(-Math.PI/4);ctx.fillStyle='#fff';ctx.font=`900 ${(fs||24)*s}px ${F}`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,0,0);ctx.restore()}
+function badge(x,y,w,s,sg){
+ const bs=96*s,bx=x+(w-400*s)/2-8*s,by=y+470*s-bs,hh=24*s,n=Math.max(1,Math.min(5,+sg.wn||1));
+ ctx.save();ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=6*s;ctx.shadowOffsetY=2*s;ctx.fillStyle='#f4f1e8';ctx.fillRect(bx,by,bs,bs);ctx.restore();
+ ctx.fillStyle='#1c2e3e';ctx.fillRect(bx,by,bs,hh);
+ ctx.fillStyle='#f3c63a';
+ for(let i=0;i<n;i++){const cx=bx+14*s+i*17*s,cy=by+hh/2;ctx.beginPath();for(let k=0;k<10;k++){const r=(k%2?4:9)*s,a=-Math.PI/2+k*Math.PI/5;ctx[k?'lineTo':'moveTo'](cx+r*Math.cos(a),cy+r*Math.sin(a))}ctx.closePath();ctx.fill()}
+ const kg=ctx.createLinearGradient(0,by+hh,0,by+bs);kg.addColorStop(0,'#ff9a1f');kg.addColorStop(.5,'#6fcf3a');kg.addColorStop(1,'#7a3cff');
+ ctx.fillStyle=kg;ctx.font=`900 ${58*s}px ${F}`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(sg.wk||'',bx+bs/2,by+hh+(bs-hh)/2-4*s+3);
+ ctx.strokeStyle='#fff';ctx.lineWidth=2*s;ctx.strokeRect(bx,by,bs,bs);
+}
+function card(x,y,w,s,sg){
+ const h=668*s,u=sg.ult,top=476*s;
+ ctx.save();ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=10*s;ctx.shadowOffsetY=4*s;
+ ctx.fillStyle=u?'#fff':'#22304a';ctx.fillRect(x,y,w,h);ctx.restore();
+ if(u){
+  ctx.fillStyle='#111';ctx.fillRect(x,y,w,top);
+  ctx.save();ctx.beginPath();ctx.rect(x,y,w,top);ctx.clip();
+  ctx.fillStyle='#e0123c';
+  const bw=60*s,dx=top*.5;[x+w*.08-dx,x+w*.92-bw].forEach(bx=>{ctx.beginPath();ctx.moveTo(bx,y+top);ctx.lineTo(bx+bw,y+top);ctx.lineTo(bx+bw+dx,y);ctx.lineTo(bx+dx,y);ctx.closePath();ctx.fill()});
+  ctx.restore();
+  ctx.strokeStyle='#ddd';ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);
+ }else{
+  ctx.fillStyle='#1b283d';ctx.fillRect(x,y+top,w,h-top);
+  stripes(x,y,w,h,'rgba(255,255,255,.05)',8);
+ }
+ // jacket
+ const js=400*s,jx=x+(w-js)/2,jy=y+43*s,b=4*s;
+ ctx.fillStyle='#fff';ctx.fillRect(jx-b,jy-b,js+2*b,js+2*b);
+ if(sg.img){const im=sg.img,m=Math.min(im.width,im.height);ctx.drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,jx,jy,js,js)}
+ else{ctx.fillStyle='#8a8f9c';ctx.fillRect(jx,jy,js,js);ctx.fillStyle='#fff';ctx.font=`500 ${28*s}px ${F}`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('No Image',jx+js/2,jy+js/2)}
+ if(sg.badge=='task')ribbon(jx,jy,js,s,'課題曲','#d81e3c',30);
+ if(u){ctx.fillStyle='#fff';ctx.font=`900 ${26*s}px ${F}`;ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillText('ULTIMA',x+w/2,y+470*s)}
+ if(sg.we)badge(x,y,w,s,sg);
+ if(sg.badge=='rev')ribbon(jx,jy,js,s,'復活!','#ff2e93',33);
+ if(sg.badge=='nat')ribbon(jx,jy,js,s,'全国!','#2f7bff',33);
+ // text
+ const cx=x+w/2,mw=w-40*s;
+ lines(sg.title||'曲名',cx,y+516*s,mw,2,33*s,14*s,900,u?'#111':'#fff',1.12);
+ ctx.fillStyle=u?'#a01028':'#fff';ctx.fillRect(x+40*s,y+563*s,w-80*s,2.5*s);
+ lines(sg.artist||'アーティスト',cx,y+616*s,mw-10*s,2,24*s,11*s,700,u?'#111':'#fff');
+}
+
+function rainbow(){const g=ctx.createLinearGradient(0,0,W,0);['#19c3e6','#36d27a','#ffe629','#ff9a1f','#ff3b8b','#a43cff','#2f6bff','#19c3e6'].forEach((c,i,a)=>g.addColorStop(i/(a.length-1),c));return g}
+function bgWE(){
+ const cs=['#19c3e6','#36d27a','#f2f2f2','#2f6bff','#3be06a','#ffe629','#ff9a1f','#ff3b3b','#a43cff','#ff35c8','#ff8c2a','#ffe629','#1f5bff','#3be06a'],sw=W/cs.length,L=H-190;
+ ctx.save();ctx.beginPath();ctx.rect(0,190,W,L);ctx.clip();
+ cs.forEach((c,i)=>{ctx.fillStyle=c;ctx.fillRect(i*sw,190,sw+1,L)});
+ let g=ctx.createLinearGradient(0,190,0,H);g.addColorStop(0,'rgba(255,255,255,.35)');g.addColorStop(.5,'rgba(255,255,255,0)');g.addColorStop(1,'rgba(0,0,40,.18)');ctx.fillStyle=g;ctx.fillRect(0,190,W,L);
+ for(let i=-4;i<10;i++){const x=i*260+(i%2?40:0),w=i%2?90:150;ctx.fillStyle=i%2?'rgba(0,0,0,.12)':'rgba(255,255,255,.16)';ctx.beginPath();ctx.moveTo(x,190);ctx.lineTo(x+w,190);ctx.lineTo(x+w-L,H);ctx.lineTo(x-L,H);ctx.fill()}
+ for(let i=0;i<8;i++){const x=i*300+120,w=i%2?60:110;ctx.fillStyle=i%2?'rgba(255,255,255,.12)':'rgba(0,0,0,.1)';ctx.beginPath();ctx.moveTo(x,190);ctx.lineTo(x+w,190);ctx.lineTo(x+w+L,H);ctx.lineTo(x+L,H);ctx.fill()}
+ ctx.restore();
+}
+function bgImg(){
+ ctx.fillStyle='#2a2f3a';ctx.fillRect(0,190,W,H-190);if(!bgimg)return;
+ const ah=H-190,r=Math.max(W/bgimg.width,ah/bgimg.height),dw=bgimg.width*r,dh=bgimg.height*r;
+ ctx.save();ctx.beginPath();ctx.rect(0,190,W,ah);ctx.clip();ctx.drawImage(bgimg,(W-dw)/2,190+(ah-dh)/2,dw,dh);ctx.restore();
+}
+function bgRed(){
+ const g=ctx.createLinearGradient(0,190,0,1014);g.addColorStop(0,'#ee0016');g.addColorStop(.5,'#9a0014');g.addColorStop(1,'#1e0006');
+ ctx.fillStyle=g;ctx.fillRect(0,190,W,H-190);
+ ctx.save();ctx.beginPath();ctx.rect(0,190,W,H-190);ctx.clip();
+ for(let i=-6;i<22;i++){const x=i*150,d=i%3,e=70+d*30;ctx.fillStyle=d==0?'rgba(0,0,0,.28)':d==1?'rgba(255,70,90,.16)':'rgba(255,255,255,.05)';
+  ctx.beginPath();ctx.moveTo(x,190);ctx.lineTo(x+e,190);ctx.lineTo(x+e+890,H);ctx.lineTo(x+890,H);ctx.fill()}
+ for(let i=0;i<14;i++){const x=i*180+60;ctx.fillStyle=i%2?'rgba(0,0,0,.2)':'rgba(255,40,70,.14)';
+  ctx.beginPath();ctx.moveTo(x,190);ctx.lineTo(x+50,190);ctx.lineTo(x-840,H);ctx.lineTo(x-890,H);ctx.fill()}
+ ctx.strokeStyle='rgba(255,170,190,.7)';ctx.lineWidth=5;
+ [0,30].forEach(o=>{ctx.beginPath();ctx.moveTo(860,300-o);ctx.lineTo(960,200-o);ctx.lineTo(1060,300-o);ctx.stroke()});
+ let r=ctx.createRadialGradient(1850,520,0,1850,520,430);r.addColorStop(0,'rgba(255,215,225,.9)');r.addColorStop(1,'rgba(255,215,225,0)');ctx.fillStyle=r;ctx.fillRect(1300,190,620,H);
+ r=ctx.createRadialGradient(0,640,0,0,640,320);r.addColorStop(0,'rgba(255,170,180,.5)');r.addColorStop(1,'rgba(255,170,180,0)');ctx.fillStyle=r;ctx.fillRect(0,190,400,H);
+ ctx.restore();
+}
+function draw(){
+ const n=+$('count').value,u=$('hstyle').value=='u';
+ // bg
+ const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#fff7a8');g.addColorStop(1,'#ffe25a');
+ ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ stripes(0,190,W,H-190,'rgba(255,255,255,.55)',26);
+ ctx.fillStyle='rgba(255,170,190,.25)';ctx.beginPath();ctx.arc(120,700,260,0,7);ctx.fill();
+ ctx.fillStyle='rgba(120,200,255,.2)';ctx.beginPath();ctx.arc(1800,380,240,0,7);ctx.fill();
+ ctx.fillStyle='rgba(255,255,255,.35)';ctx.beginPath();ctx.arc(1750,900,180,0,7);ctx.fill();
+ const bs=$('bgstyle').value;if(bs=='u')bgRed();else if(bs=='w')bgWE();else if(bs=='i')bgImg();
+ // header
+ ctx.fillStyle='#243247';ctx.fillRect(0,0,W,190);stripes(0,0,W,190,'rgba(255,255,255,.05)',9);
+ ctx.fillStyle=$('bgstyle').value=='w'?rainbow():'#1e90ff';ctx.fillRect(0,188,W,5);
+ const auto=$('autonum').checked,parts=[];
+ ($('head').value||'').split(/(\{[^}]*\})/).forEach(seg=>{if(/^\{[^}]*\}$/.test(seg)){if(seg.length>2)parts.push({p:seg.slice(1,-1),big:1})}else(auto?seg.split(/(\d+)/):[seg]).forEach(t=>{if(t)parts.push({p:t,big:auto&&/^\d+$/.test(t)})})});
+ const meas=parts.map(o=>{const sz=o.big?132:92;ctx.font=`900 ${sz}px ${F}`;return{p:o.p,sz,w:ctx.measureText(o.p).width}});
+ let tw=meas.reduce((a,m)=>a+m.w,0),k=Math.min(1,1700/tw),px=W/2-tw*k/2;
+ const hs=$('hstyle').value,gr=hs=='w'?ctx.createLinearGradient(px,0,px+tw*k,0):ctx.createLinearGradient(0,50,0,160);
+ if(hs=='w'){['#7be84a','#3fd8e0','#b48ae8','#ff8a3a','#ffe629','#5fe05a'].forEach((c,i,a)=>gr.addColorStop(i/(a.length-1),c))}else if(u){gr.addColorStop(0,'#ff6fb0');gr.addColorStop(1,'#e0103c')}else{gr.addColorStop(0,'#ffff3a');gr.addColorStop(1,'#ffee00')}
+ ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.lineJoin='round';
+ meas.forEach(m=>{ctx.font=`900 ${m.sz*k}px ${F}`;ctx.strokeStyle='rgba(70,80,95,.9)';ctx.lineWidth=12;ctx.strokeText(m.p,px,152);ctx.fillStyle=gr;ctx.fillText(m.p,px,152);px+=m.w*k});
+ 
+ // cards
+ const CY=600;
+ if(n<=3){const w=498,s=w/498,gap=56,tw2=n*w+(n-1)*gap;for(let i=0;i<n;i++)card((W-tw2)/2+i*(w+gap),CY-334*s,w,s,songs[i])}
+ else if(n==4){const w=398,s=w/498,gap=44,tw2=4*w+3*gap;for(let i=0;i<4;i++)card((W-tw2)/2+i*(w+gap),328,w,s,songs[i])}
+ else{
+  const w=276,s=w/498,h=668*s,gap=n==5?26:30,a=Math.ceil(n/2),rows=[a,n-a],y0=CY-(2*h+26)/2;let idx=0;
+  rows.forEach((c,r)=>{const tw2=c*w+(c-1)*gap;for(let i=0;i<c;i++)card((W-tw2)/2+i*(w+gap),y0+r*(h+26),w,s,songs[idx++])});
+ }
+ // footer
+ if($('copy').value.trim()){
+ ctx.fillStyle='rgba(255,250,225,.96)';ctx.fillRect(0,1014,W,66);
+ const cl=$('copy').value.split('\n').slice(0,3),lh=cl.length>2?20:24,y0=1047-lh*(cl.length-1)/2;
+ ctx.fillStyle='#333';ctx.font=`500 19px ${F}`;ctx.textAlign='left';ctx.textBaseline='middle';
+ cl.forEach((t,i)=>ctx.fillText(t,40,y0+i*lh,W-70));
+ }
+ 
+ 
+ 
+ 
+ 
+ 
+}
+
+let tm;
+function sched(){draw();clearTimeout(tm);tm=setTimeout(()=>{
+ const txt=$('head').value+$('copy').value+songs.map(s=>s.title+s.artist+s.wk).join('')+'ULTIMA課題曲復活!全国';
+ Promise.all([document.fonts.load('900 20px "Noto Sans JP"',txt),document.fonts.load('500 20px "Noto Sans JP"',txt),document.fonts.load('700 20px "Noto Sans JP"',txt)]).then(draw).catch(draw)},300)}
+
+$('gen').onclick=()=>{
+ draw();const url=cv.toDataURL('image/png');
+ $('out').innerHTML='<p class="hint">画像を長押し（PC: 右クリック）して保存してください。</p><img alt="生成画像" src="'+url+'">';
+ try{const a=document.createElement('a');a.href=url;a.download='announce.png';a.click()}catch(e){}
+};
+sched();
+</script>
+</body>
+</html>
